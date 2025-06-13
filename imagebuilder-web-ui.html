@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управление Image Builder</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .header {
+            background-color: #333;
+            color: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .imagebuilder-list {
+            display: grid;
+            gap: 15px;
+        }
+        
+        .imagebuilder-item {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .imagebuilder-item.disabled {
+            background-color: #f9f9f9;
+            opacity: 0.7;
+        }
+        
+        .version-badge {
+            background-color: #007bff;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        
+        .target-badge {
+            background-color: #28a745;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 3px;
+        }
+        
+        .button {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            margin: 0 2px;
+        }
+        
+        .button.primary { background-color: #007bff; color: white; }
+        .button.success { background-color: #28a745; color: white; }
+        .button.danger { background-color: #dc3545; color: white; }
+        .button.warning { background-color: #ffc107; color: black; }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 10% auto;
+            padding: 20px;
+            border-radius: 5px;
+            width: 80%;
+            max-width: 600px;
+        }
+        
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        
+        .status-indicator.active { background-color: #28a745; }
+        .status-indicator.inactive { background-color: #dc3545; }
+        
+        .quick-add {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .quick-add-item {
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 3px;
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .quick-add-item:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .quick-add-item.selected {
+            background-color: #007bff;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Управление Image Builder</h1>
+        <p>Добавляйте и управляйте различными версиями и архитектурами OpenWrt</p>
+    </div>
+
+    <div class="container">
+        <h2>Установленные Image Builder</h2>
+        <div id="imagebuilderList" class="imagebuilder-list">
+            <p>Загрузка...</p>
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <button class="button primary" onclick="showAddModal()">Добавить Image Builder</button>
+            <button class="button success" onclick="showQuickAdd()">Быстрое добавление</button>
+            <button class="button warning" onclick="refreshASU()">Обновить конфигурацию ASU</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно добавления -->
+    <div id="addModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2>Добавить Image Builder</h2>
+            
+            <form id="addForm">
+                <div class="form-group">
+                    <label>Версия OpenWrt:</label>
+                    <input type="text" id="version" placeholder="например: 24.10" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Target/Архитектура:</label>
+                    <input type="text" id="target" placeholder="например: x86/64" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Источник:</label>
+                    <select id="sourceType" onchange="updateSourceInput()">
+                        <option value="official">Официальный релиз</option>
+                        <option value="url">URL для скачивания</option>
+                        <option value="file">Локальный файл</option>
+                    </select>
+                </div>
+                
+                <div class="form-group" id="sourceInputGroup" style="display: none;">
+                    <label>URL или путь к файлу:</label>
+                    <input type="text" id="sourceInput" placeholder="https://... или /path/to/file.tar.xz">
+                </div>
+                
+                <div class="form-group">
+                    <label>Название (опционально):</label>
+                    <input type="text" id="customName" placeholder="например: OpenWrt Custom">
+                </div>
+                
+                <button type="submit" class="button primary">Добавить</button>
+                <button type="button" class="button" onclick="closeModal()">Отмена</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модальное окно быстрого добавления -->
+    <div id="quickAddModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeQuickAdd()">&times;</span>
+            <h2>Быстрое добавление официальных релизов</h2>
+            
+            <h3>Выберите версии:</h3>
+            <div class="quick-add" id="versionsList">
+                <div class="quick-add-item" data-version="SNAPSHOT">SNAPSHOT</div>
+                <div class="quick-add-item" data-version="24.10.1">24.10.1 (Latest)</div>
+                <div class="quick-add-item" data-version="24.10">24.10</div>
+                <div class="quick-add-item" data-version="23.05">23.05 (Stable)</div>
+                <div class="quick-add-item" data-version="22.03">22.03</div>
+                <div class="quick-add-item" data-version="21.02">21.02</div>
+            </div>
+            
+            <h3>Выберите архитектуры:</h3>
+            <div class="quick-add" id="targetsList">
+                <div class="quick-add-item" data-target="mediatek/filogic">MediaTek Filogic (24.10.1)</div>
+                <div class="quick-add-item" data-target="x86/64">x86/64</div>
+                <div class="quick-add-item" data-target="x86/generic">x86/generic</div>
+                <div class="quick-add-item" data-target="ath79/generic">ath79/generic</div>
+                <div class="quick-add-item" data-target="ramips/mt7621">ramips/mt7621</div>
+                <div class="quick-add-item" data-target="ramips/mt7620">ramips/mt7620</div>
+                <div class="quick-add-item" data-target="bcm27xx/bcm2711">Raspberry Pi 4</div>
+                <div class="quick-add-item" data-target="bcm27xx/bcm2710">Raspberry Pi 3</div>
+                <div class="quick-add-item" data-target="ipq40xx/generic">ipq40xx/generic</div>
+                <div class="quick-add-item" data-target="mediatek/mt7622">mediatek/mt7622</div>
+                <div class="quick-add-item" data-target="ipq806x/generic">ipq806x/generic</div>
+                <div class="quick-add-item" data-target="bcm53xx/generic">bcm53xx/generic</div>
+            </div>
+            
+            <div style="margin-top: 20px;">
+                <button class="button primary" onclick="quickAddSelected()">Добавить выбранные</button>
+                <button class="button" onclick="closeQuickAdd()">Отмена</button>
+            </div>
+            
+            <div id="quickAddProgress" style="margin-top: 20px; display: none;">
+                <h4>Прогресс добавления:</h4>
+                <div id="progressLog"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Загрузка списка Image Builder
+        async function loadImageBuilders() {
+            try {
+                const response = await fetch('/api/imagebuilders');
+                const imagebuilders = await response.json();
+                
+                const listDiv = document.getElementById('imagebuilderList');
+                
+                if (imagebuilders.length === 0) {
+                    listDiv.innerHTML = '<p>Нет установленных Image Builder</p>';
+                    return;
+                }
+                
+                listDiv.innerHTML = imagebuilders.map(ib => `
+                    <div class="imagebuilder-item ${ib.enabled ? '' : 'disabled'}">
+                        <div>
+                            <span class="status-indicator ${ib.enabled ? 'active' : 'inactive'}"></span>
+                            <span class="version-badge">${ib.version}</span>
+                            <span class="target-badge">${ib.target}</span>
+                            <span style="margin-left: 10px;">${ib.name || 'OpenWrt'}</span>
+                            <small style="color: #666; margin-left: 10px;">Добавлен: ${new Date(ib.added).toLocaleDateString()}</small>
+                        </div>
+                        <div>
+                            ${ib.enabled ? 
+                                `<button class="button warning" onclick="toggleImageBuilder('${ib.version}', '${ib.target}', false)">Выключить</button>` :
+                                `<button class="button success" onclick="toggleImageBuilder('${ib.version}', '${ib.target}', true)">Включить</button>`
+                            }
+                            <button class="button danger" onclick="removeImageBuilder('${ib.version}', '${ib.target}')">Удалить</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Ошибка загрузки:', error);
+                document.getElementById('imagebuilderList').innerHTML = '<p>Ошибка загрузки данных</p>';
+            }
+        }
+        
+        // Показать модальное окно добавления
+        function showAddModal() {
+            document.getElementById('addModal').style.display = 'block';
+        }
+        
+        // Закрыть модальное окно
+        function closeModal() {
+            document.getElementById('addModal').style.display = 'none';
+            document.getElementById('addForm').reset();
+        }
+        
+        // Обновить поле ввода источника
+        function updateSourceInput() {
+            const sourceType = document.getElementById('sourceType').value;
+            const inputGroup = document.getElementById('sourceInputGroup');
+            
+            if (sourceType === 'official') {
+                inputGroup.style.display = 'none';
+            } else {
+                inputGroup.style.display = 'block';
+            }
+        }
+        
+        // Добавить Image Builder
+        document.getElementById('addForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const version = document.getElementById('version').value;
+            const target = document.getElementById('target').value;
+            const sourceType = document.getElementById('sourceType').value;
+            const sourceInput = document.getElementById('sourceInput').value;
+            const customName = document.getElementById('customName').value;
+            
+            const source = sourceType === 'official' ? 'official' : sourceInput;
+            
+            // Здесь нужно вызвать API для добавления
+            alert(`Добавление ${version}/${target} из ${source}`);
+            
+            closeModal();
+            loadImageBuilders();
+        });
+        
+        // Включить/выключить Image Builder
+        async function toggleImageBuilder(version, target, enable) {
+            // Вызов API для изменения статуса
+            alert(`${enable ? 'Включение' : 'Выключение'} ${version}/${target}`);
+            loadImageBuilders();
+        }
+        
+        // Удалить Image Builder
+        async function removeImageBuilder(version, target) {
+            if (confirm(`Удалить Image Builder ${version}/${target}?`)) {
+                // Вызов API для удаления
+                alert(`Удаление ${version}/${target}`);
+                loadImageBuilders();
+            }
+        }
+        
+        // Обновить конфигурацию ASU
+        async function refreshASU() {
+            try {
+                await fetch('/api/imagebuilders/refresh', { method: 'POST' });
+                alert('Конфигурация ASU обновлена');
+            } catch (error) {
+                alert('Ошибка обновления конфигурации');
+            }
+        }
+        
+        // Быстрое добавление
+        function showQuickAdd() {
+            document.getElementById('quickAddModal').style.display = 'block';
+        }
+        
+        function closeQuickAdd() {
+            document.getElementById('quickAddModal').style.display = 'none';
+            document.getElementById('quickAddProgress').style.display = 'none';
+        }
+        
+        // Выбор элементов для быстрого добавления
+        document.querySelectorAll('.quick-add-item').forEach(item => {
+            item.addEventListener('click', () => {
+                item.classList.toggle('selected');
+            });
+        });
+        
+        // Добавить выбранные
+        async function quickAddSelected() {
+            const selectedVersions = Array.from(document.querySelectorAll('#versionsList .selected')).map(el => el.dataset.version);
+            const selectedTargets = Array.from(document.querySelectorAll('#targetsList .selected')).map(el => el.dataset.target);
+            
+            if (selectedVersions.length === 0 || selectedTargets.length === 0) {
+                alert('Выберите хотя бы одну версию и архитектуру');
+                return;
+            }
+            
+            document.getElementById('quickAddProgress').style.display = 'block';
+            const progressLog = document.getElementById('progressLog');
+            progressLog.innerHTML = '';
+            
+            for (const version of selectedVersions) {
+                for (const target of selectedTargets) {
+                    progressLog.innerHTML += `<p>Добавление ${version}/${target}...</p>`;
+                    // Здесь вызов API для добавления
+                    await new Promise(resolve => setTimeout(resolve, 500)); // Имитация задержки
+                }
+            }
+            
+            progressLog.innerHTML += '<p style="color: green;">Все Image Builder добавлены!</p>';
+            setTimeout(() => {
+                closeQuickAdd();
+                loadImageBuilders();
+            }, 2000);
+        }
+        
+        // Загрузка при старте
+        loadImageBuilders();
+    </script>
+</body>
+</html>
