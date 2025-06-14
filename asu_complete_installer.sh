@@ -138,8 +138,15 @@ list_imagebuilders() {
         return
     fi
     
-    jq -r '.imagebuilders[] | "\(.version) | \(.target) | \(.path) | \(.added) | \(.enabled)"' "$CONFIG_FILE" | \
+    jq -r '.imagebuilders[] | "\(.version)|\(.target)|\(.path)|\(.added)|\(.enabled)"' "$CONFIG_FILE" | \
     while IFS='|' read -r version target path added enabled; do
+        # Удаляем пробелы
+        version=$(echo "$version" | xargs)
+        target=$(echo "$target" | xargs)
+        path=$(echo "$path" | xargs)
+        added=$(echo "$added" | xargs)
+        enabled=$(echo "$enabled" | xargs)
+        
         status=$([ "$enabled" = "true" ] && echo -e "${GREEN}включен${NC}" || echo -e "${RED}выключен${NC}")
         echo -e "Версия: ${YELLOW}$version${NC}, Target: ${YELLOW}$target${NC}, Статус: $status"
         echo "  Путь: $path"
@@ -689,6 +696,29 @@ echo "Структура store обновлена"
 EOF
     
     chmod +x "$INSTALL_DIR/update-store.sh"
+    
+    # Скрипт для отладки конфигурации
+    cat > "$INSTALL_DIR/debug-config.sh" << 'EOF'
+#!/bin/bash
+
+echo "=== Содержимое imagebuilders.json ==="
+if [ -f "/opt/asu-server/imagebuilders.json" ]; then
+    cat /opt/asu-server/imagebuilders.json | jq .
+else
+    echo "Файл не найден"
+fi
+
+echo ""
+echo "=== Проверка custom_config.py ==="
+if [ -f "/opt/asu-server/asu/custom_config.py" ]; then
+    echo "Файл существует"
+    grep -n "enabled" /opt/asu-server/asu/custom_config.py || echo "Нет упоминаний enabled"
+else
+    echo "Файл не найден"
+fi
+EOF
+    
+    chmod +x "$INSTALL_DIR/debug-config.sh"
     
     # Инструкция для клиентов
     cat > "$INSTALL_DIR/CLIENT_SETUP.md" << EOF
