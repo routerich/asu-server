@@ -596,8 +596,8 @@ create_store_structure() {
   "version": "24.10.1",
   "branch": "24.10",
   "release_date": "2024-10-01",
-  "targets": {},
-  "profiles": {}
+  "targets": [],
+  "profiles": []
 }
 EOF
 
@@ -606,8 +606,8 @@ EOF
   "version": "24.10",
   "branch": "24.10",
   "release_date": "2024-10-01",
-  "targets": {},
-  "profiles": {}
+  "targets": [],
+  "profiles": []
 }
 EOF
 
@@ -616,8 +616,8 @@ EOF
   "version": "23.05",
   "branch": "23.05",
   "release_date": "2023-05-01",
-  "targets": {},
-  "profiles": {}
+  "targets": [],
+  "profiles": []
 }
 EOF
 
@@ -626,8 +626,8 @@ EOF
   "version": "22.03",
   "branch": "22.03",
   "release_date": "2022-03-01",
-  "targets": {},
-  "profiles": {}
+  "targets": [],
+  "profiles": []
 }
 EOF
 
@@ -636,8 +636,8 @@ EOF
   "version": "SNAPSHOT",
   "branch": "master",
   "release_date": "ongoing",
-  "targets": {},
-  "profiles": {}
+  "targets": [],
+  "profiles": []
 }
 EOF
 
