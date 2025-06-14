@@ -357,16 +357,16 @@ install_dependencies() {
 }
 
 setup_podman() {
-    echo -e "${YELLOW}Настройка Podman...${NC}"
+    echo -e "${YELLOW}Настройка Podman...${NC}" >&2
     local user="${SUDO_USER:-root}"
     if [ "$user" = "root" ]; then
         user="asu"
         if ! id "$user" &>/dev/null; then
             useradd -m -s /bin/bash "$user"
-            echo "Создан пользователь: $user"
+            echo "Создан пользователь: $user" >&2
         fi
     fi
-    loginctl enable-linger "$user" || true
+    loginctl enable-linger "$user" >&2 || true
     echo "$user"
 }
 
