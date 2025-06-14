@@ -490,6 +490,11 @@ server {
         autoindex on;
         autoindex_exact_size off;
         autoindex_localtime on;
+        
+        # Разрешить доступ к скрытым файлам (.overview.json)
+        location ~ /\. {
+            allow all;
+        }
     }
 }
 EOF
@@ -582,6 +587,7 @@ create_store_structure() {
     mkdir -p "$store_dir/releases/24.10.1"
     mkdir -p "$store_dir/releases/24.10"
     mkdir -p "$store_dir/releases/23.05"
+    mkdir -p "$store_dir/releases/22.03"
     mkdir -p "$store_dir/releases/SNAPSHOT"
     
     # Создание .overview.json файлов
@@ -615,6 +621,16 @@ EOF
 }
 EOF
 
+    cat > "$store_dir/releases/22.03/.overview.json" << 'EOF'
+{
+  "version": "22.03",
+  "branch": "22.03",
+  "release_date": "2022-03-01",
+  "targets": {},
+  "profiles": {}
+}
+EOF
+
     cat > "$store_dir/releases/SNAPSHOT/.overview.json" << 'EOF'
 {
   "version": "SNAPSHOT",
@@ -624,11 +640,24 @@ EOF
   "profiles": {}
 }
 EOF
+
+    # Создание корневого overview.json
+    cat > "$store_dir/.overview.json" << 'EOF'
+{
+  "versions": ["SNAPSHOT", "24.10.1", "24.10", "23.05", "22.03"],
+  "default_version": "24.10.1"
+}
+EOF
     
     # Установка правильных прав
     chmod -R 755 "$store_dir"
+    chown -R www-data:www-data "$store_dir" 2>/dev/null || true
     
     echo "Структура store создана"
+    echo "Файлы .overview.json:"
+    find "$store_dir" -name ".overview.json" -type f | while read file; do
+        echo "  - $file"
+    done
 }
 
 create_management_tools() {
@@ -786,6 +815,7 @@ show_main_menu() {
     echo "6) Настройка Attended Sysupgrade"
     echo "7) Создать клиентскую документацию"
     echo "8) Управление сервисами"
+    echo "9) Создать/обновить структуру store"
     echo "0) Выход"
     echo ""
     echo -n "Выберите действие: "
@@ -1146,6 +1176,16 @@ case "$1" in
                             read -r
                         fi
                     done
+                    ;;
+                9)
+                    clear
+                    create_store_structure
+                    echo ""
+                    echo "Перезапуск nginx для применения изменений..."
+                    nginx -t && systemctl reload nginx
+                    echo ""
+                    echo "Нажмите Enter для продолжения..."
+                    read -r
                     ;;
                 0) 
                     echo "До свидания!"
