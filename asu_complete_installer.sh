@@ -376,6 +376,68 @@ update_device_profiles() {
     done
 }
 
+populate_overview_files() {
+    echo -e "${YELLOW}Заполнение файлов .overview.json данными из Image Builder...${NC}"
+    
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "Нет настроенных Image Builder"
+        return
+    fi
+    
+    local store_dir="$INSTALL_DIR/public/store"
+    
+    jq -r '.imagebuilders[] | select(.enabled == true) | "\(.version) \(.target) \(.path)"' "$CONFIG_FILE" | \
+    while read -r version target path; do
+        echo "Обработка $version/$target..."
+        
+        if [ -d "$path" ]; then
+            local overview_file="$store_dir/releases/$version/.overview.json"
+            local targetinfo_file="$path/.targetinfo"
+            
+            if [ -f "$targetinfo_file" ]; then
+                # Извлечение профилей из .targetinfo
+                local profiles_json=$(awk '/^Target-Profile:/ {print "\"" $2 "\""}' "$targetinfo_file" | paste -sd, -)
+                
+                # Создание обновленного .overview.json
+                cat > "$overview_file" << EOF
+{
+  "version": "$version",
+  "branch": "${version%.*}",
+  "release_date": "$(date -u +%Y-%m-%d)",
+  "targets": ["$target"],
+  "profiles": [$profiles_json]
+}
+EOF
+                
+                local profile_count=$(echo "$profiles_json" | tr ',' '\n' | wc -l)
+                echo "  Добавлено профилей: $profile_count"
+                
+                # Проверка наличия routerich_ax3000-v1
+                if echo "$profiles_json" | grep -q "routerich_ax3000-v1"; then
+                    echo -e "  ${GREEN}✓ routerich_ax3000-v1 найден и добавлен!${NC}"
+                fi
+            else
+                echo "  Файл .targetinfo не найден, создаем пустую структуру"
+                cat > "$overview_file" << EOF
+{
+  "version": "$version",
+  "branch": "${version%.*}",
+  "release_date": "$(date -u +%Y-%m-%d)",
+  "targets": ["$target"],
+  "profiles": []
+}
+EOF
+            fi
+        fi
+    done
+    
+    # Установка прав
+    chmod -R 755 "$store_dir"
+    chown -R www-data:www-data "$store_dir" 2>/dev/null || true
+    
+    echo "Заполнение .overview.json завершено"
+}
+
 show_device_profiles() {
     echo -e "${BLUE}=== Профили устройств ===${NC}"
     echo ""
@@ -900,6 +962,7 @@ show_main_menu() {
     echo "7) Создать клиентскую документацию"
     echo "8) Управление сервисами"
     echo "9) Создать/обновить структуру store"
+    echo "a) Заполнить overview.json профилями устройств"
     echo "0) Выход"
     echo ""
     echo -n "Выберите действие: "
@@ -915,6 +978,7 @@ show_imagebuilder_menu() {
     echo "6) Импорт официальных релизов"
     echo "7) Обновить конфигурацию ASU"
     echo "8) Показать профили устройств"
+    echo "9) Заполнить .overview.json из Image Builder"
     echo "0) Назад"
     echo ""
     echo -n "Выберите действие: "
@@ -1181,6 +1245,10 @@ case "$1" in
                                 clear
                                 show_device_profiles
                                 ;;
+                            9)
+                                clear
+                                populate_overview_files
+                                ;;
                             0) 
                                 break
                                 ;;
@@ -1272,6 +1340,13 @@ case "$1" in
                     echo ""
                     echo "Перезапуск nginx для применения изменений..."
                     nginx -t && systemctl reload nginx
+                    echo ""
+                    echo "Нажмите Enter для продолжения..."
+                    read -r
+                    ;;
+                a|A)
+                    clear
+                    populate_overview_files
                     echo ""
                     echo "Нажмите Enter для продолжения..."
                     read -r
