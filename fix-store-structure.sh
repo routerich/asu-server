@@ -19,7 +19,7 @@ cat > "$STORE_DIR/releases/24.10.1/.overview.json" << 'EOF'
   "version": "24.10.1",
   "branch": "24.10",
   "release_date": "2024-10-01",
-  "targets": [],
+  "targets": {},
   "profiles": []
 }
 EOF
@@ -29,7 +29,7 @@ cat > "$STORE_DIR/releases/24.10/.overview.json" << 'EOF'
   "version": "24.10",
   "branch": "24.10",
   "release_date": "2024-10-01",
-  "targets": [],
+  "targets": {},
   "profiles": []
 }
 EOF
@@ -39,7 +39,7 @@ cat > "$STORE_DIR/releases/23.05/.overview.json" << 'EOF'
   "version": "23.05",
   "branch": "23.05",
   "release_date": "2023-05-01",
-  "targets": [],
+  "targets": {},
   "profiles": []
 }
 EOF
@@ -49,7 +49,7 @@ cat > "$STORE_DIR/releases/22.03/.overview.json" << 'EOF'
   "version": "22.03",
   "branch": "22.03",
   "release_date": "2022-03-01",
-  "targets": [],
+  "targets": {},
   "profiles": []
 }
 EOF
@@ -59,7 +59,7 @@ cat > "$STORE_DIR/releases/SNAPSHOT/.overview.json" << 'EOF'
   "version": "SNAPSHOT",
   "branch": "master",
   "release_date": "ongoing",
-  "targets": [],
+  "targets": {},
   "profiles": []
 }
 EOF

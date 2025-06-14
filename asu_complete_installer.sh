@@ -398,13 +398,23 @@ populate_overview_files() {
                 # Извлечение профилей из .targetinfo
                 local profiles_json=$(awk '/^Target-Profile:/ {print "\"" $2 "\""}' "$targetinfo_file" | paste -sd, -)
                 
-                # Создание обновленного .overview.json
+                # Проверка, что profiles_json не пустой
+                if [ -z "$profiles_json" ]; then
+                    profiles_json='""'
+                fi
+                
+                # Создание обновленного .overview.json с правильной структурой
                 cat > "$overview_file" << EOF
 {
   "version": "$version",
   "branch": "${version%.*}",
   "release_date": "$(date -u +%Y-%m-%d)",
-  "targets": ["$target"],
+  "targets": {
+    "$target": {
+      "enabled": true,
+      "profiles": [$profiles_json]
+    }
+  },
   "profiles": [$profiles_json]
 }
 EOF
@@ -423,7 +433,12 @@ EOF
   "version": "$version",
   "branch": "${version%.*}",
   "release_date": "$(date -u +%Y-%m-%d)",
-  "targets": ["$target"],
+  "targets": {
+    "$target": {
+      "enabled": true,
+      "profiles": []
+    }
+  },
   "profiles": []
 }
 EOF
@@ -742,7 +757,7 @@ create_store_structure() {
   "version": "24.10.1",
   "branch": "24.10",
   "release_date": "2024-10-01",
-  "targets": [],
+  "targets": {},
   "profiles": []
 }
 EOF
@@ -752,7 +767,7 @@ EOF
   "version": "24.10",
   "branch": "24.10",
   "release_date": "2024-10-01",
-  "targets": [],
+  "targets": {},
   "profiles": []
 }
 EOF
@@ -762,7 +777,7 @@ EOF
   "version": "23.05",
   "branch": "23.05",
   "release_date": "2023-05-01",
-  "targets": [],
+  "targets": {},
   "profiles": []
 }
 EOF
@@ -772,7 +787,7 @@ EOF
   "version": "22.03",
   "branch": "22.03",
   "release_date": "2022-03-01",
-  "targets": [],
+  "targets": {},
   "profiles": []
 }
 EOF
@@ -782,7 +797,7 @@ EOF
   "version": "SNAPSHOT",
   "branch": "master",
   "release_date": "ongoing",
-  "targets": [],
+  "targets": {},
   "profiles": []
 }
 EOF
