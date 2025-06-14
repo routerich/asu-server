@@ -550,6 +550,63 @@ build_and_start_services() {
     systemctl start asu-server
 }
 
+create_store_structure() {
+    echo -e "${YELLOW}Создание структуры store...${NC}"
+    local store_dir="$INSTALL_DIR/public/store"
+    
+    # Создание директорий для релизов
+    mkdir -p "$store_dir/releases/24.10.1"
+    mkdir -p "$store_dir/releases/24.10"
+    mkdir -p "$store_dir/releases/23.05"
+    mkdir -p "$store_dir/releases/SNAPSHOT"
+    
+    # Создание .overview.json файлов
+    cat > "$store_dir/releases/24.10.1/.overview.json" << 'EOF'
+{
+  "version": "24.10.1",
+  "branch": "24.10",
+  "release_date": "2024-10-01",
+  "targets": {},
+  "profiles": {}
+}
+EOF
+
+    cat > "$store_dir/releases/24.10/.overview.json" << 'EOF'
+{
+  "version": "24.10",
+  "branch": "24.10",
+  "release_date": "2024-10-01",
+  "targets": {},
+  "profiles": {}
+}
+EOF
+
+    cat > "$store_dir/releases/23.05/.overview.json" << 'EOF'
+{
+  "version": "23.05",
+  "branch": "23.05",
+  "release_date": "2023-05-01",
+  "targets": {},
+  "profiles": {}
+}
+EOF
+
+    cat > "$store_dir/releases/SNAPSHOT/.overview.json" << 'EOF'
+{
+  "version": "SNAPSHOT",
+  "branch": "master",
+  "release_date": "ongoing",
+  "targets": {},
+  "profiles": {}
+}
+EOF
+    
+    # Установка правильных прав
+    chmod -R 755 "$store_dir"
+    
+    echo "Структура store создана"
+}
+
 create_management_tools() {
     echo -e "${YELLOW}Создание утилит управления...${NC}"
     
@@ -597,6 +654,41 @@ echo "- Документация API: http://$SERVER_IP/api/docs"
 EOF
 
     chmod +x "$INSTALL_DIR/status.sh"
+    
+    # Скрипт для обновления store
+    cat > "$INSTALL_DIR/update-store.sh" << 'EOF'
+#!/bin/bash
+
+STORE_DIR="/opt/asu-server/public/store"
+
+echo "Обновление структуры store..."
+
+# Создание директорий для релизов
+for version in "24.10.1" "24.10" "23.05" "SNAPSHOT"; do
+    mkdir -p "$STORE_DIR/releases/$version"
+    
+    # Создание .overview.json если его нет
+    if [ ! -f "$STORE_DIR/releases/$version/.overview.json" ]; then
+        echo "Создание .overview.json для $version"
+        cat > "$STORE_DIR/releases/$version/.overview.json" << JSON
+{
+  "version": "$version",
+  "branch": "${version%.*}",
+  "release_date": "$(date -u +%Y-%m-%d)",
+  "targets": {},
+  "profiles": {}
+}
+JSON
+    fi
+done
+
+# Установка прав
+chmod -R 755 "$STORE_DIR"
+
+echo "Структура store обновлена"
+EOF
+    
+    chmod +x "$INSTALL_DIR/update-store.sh"
     
     # Инструкция для клиентов
     cat > "$INSTALL_DIR/CLIENT_SETUP.md" << EOF
@@ -790,6 +882,7 @@ install_full_system() {
     configure_nginx
     create_systemd_service "$user"
     build_and_start_services "$user"
+    create_store_structure
     create_management_tools
     init_imagebuilder_config
     
