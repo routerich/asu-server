@@ -396,22 +396,24 @@ populate_overview_files() {
             
             if [ -f "$targetinfo_file" ]; then
                 # Извлечение профилей из .targetinfo в правильном формате
-                echo "  Создание .overview.json в формате OpenWrt..."
+                echo "  Создание .overview.json и profiles.json в формате OpenWrt..."
                 
-                # Создание временного файла для профилей
-                local temp_profiles="/tmp/profiles_$version.json"
-                echo '[' > "$temp_profiles"
+                # Создание временного файла для .overview.json профилей (массив)
+                local temp_overview="/tmp/overview_profiles_$version.json"
+                echo '[' > "$temp_overview"
                 
-                # Парсинг .targetinfo для создания профилей
+                # Создание временного файла для target/profiles.json (объект)
+                local temp_profiles="/tmp/target_profiles_$version.json"
+                echo '{' > "$temp_profiles"
+                
+                # Парсинг .targetinfo для создания обоих форматов
                 awk '
-                BEGIN { RS=""; FS="\n"; first=1 }
+                BEGIN { RS=""; FS="\n"; first_overview=1; first_profiles=1 }
                 /^Target-Profile:/ {
-                    if (!first) print ","
-                    first=0
-                    
                     profile_id = ""
-                    model = ""
-                    vendor = ""
+                    profile_name = ""
+                    device_title = ""
+                    device_packages = ""
                     
                     for (i=1; i<=NF; i++) {
                         if ($i ~ /^Target-Profile:/) {
@@ -420,39 +422,83 @@ populate_overview_files() {
                         }
                         if ($i ~ /^Target-Profile-Name:/) {
                             gsub(/^Target-Profile-Name: /, "", $i)
-                            name = $i
-                            # Попытка разделить на vendor и model
-                            if (match(name, /^([^[:space:]]+)[[:space:]]+(.+)/, arr)) {
-                                vendor = arr[1]
-                                model = arr[2]
-                            } else {
-                                vendor = "Generic"
-                                model = name
-                            }
+                            profile_name = $i
+                        }
+                        if ($i ~ /^Target-Profile-Description:/) {
+                            gsub(/^Target-Profile-Description: /, "", $i)
+                            device_title = $i
+                        }
+                        if ($i ~ /^Target-Profile-Packages:/) {
+                            gsub(/^Target-Profile-Packages: /, "", $i)
+                            device_packages = $i
                         }
                     }
                     
-                    printf "    {\n"
-                    printf "      \"id\": \"%s\",\n", profile_id
-                    printf "      \"target\": \"%s\",\n", "'$target'"
-                    printf "      \"titles\": [\n"
-                    printf "        {\n"
-                    printf "          \"vendor\": \"%s\",\n", vendor
-                    printf "          \"model\": \"%s\"\n", model
-                    printf "        }\n"
-                    printf "      ]\n"
-                    printf "    }"
+                    # Если нет описания, используем имя профиля
+                    if (device_title == "") {
+                        device_title = profile_name
+                    }
+                    
+                    # Разделение на vendor и model
+                    vendor = "Generic"
+                    model = device_title
+                    if (match(device_title, /^([^[:space:]]+)[[:space:]]+(.+)/, arr)) {
+                        vendor = arr[1]
+                        model = arr[2]
+                    }
+                    
+                    # Запись в формат .overview.json (массив объектов)
+                    if (!first_overview) printf "," >> "/tmp/overview_profiles_'$version'.json"
+                    first_overview=0
+                    printf "    {\n" >> "/tmp/overview_profiles_'$version'.json"
+                    printf "      \"id\": \"%s\",\n", profile_id >> "/tmp/overview_profiles_'$version'.json"
+                    printf "      \"target\": \"%s\",\n", "'$target'" >> "/tmp/overview_profiles_'$version'.json"
+                    printf "      \"titles\": [\n" >> "/tmp/overview_profiles_'$version'.json"
+                    printf "        {\n" >> "/tmp/overview_profiles_'$version'.json"
+                    printf "          \"vendor\": \"%s\",\n", vendor >> "/tmp/overview_profiles_'$version'.json"
+                    printf "          \"model\": \"%s\"\n", model >> "/tmp/overview_profiles_'$version'.json"
+                    printf "        }\n" >> "/tmp/overview_profiles_'$version'.json"
+                    printf "      ]\n" >> "/tmp/overview_profiles_'$version'.json"
+                    printf "    }" >> "/tmp/overview_profiles_'$version'.json"
+                    
+                    # Запись в формат target/profiles.json (объект с ключами-профилями)
+                    if (!first_profiles) printf "," >> "/tmp/target_profiles_'$version'.json"
+                    first_profiles=0
+                    printf "  \"%s\": {\n", profile_id >> "/tmp/target_profiles_'$version'.json"
+                    printf "    \"device_packages\": [" >> "/tmp/target_profiles_'$version'.json"
+                    if (device_packages != "") {
+                        split(device_packages, packages, " ")
+                        for (j in packages) {
+                            if (j > 1) printf "," >> "/tmp/target_profiles_'$version'.json"
+                            printf "\"%s\"", packages[j] >> "/tmp/target_profiles_'$version'.json"
+                        }
+                    }
+                    printf "],\n" >> "/tmp/target_profiles_'$version'.json"
+                    printf "    \"image_prefix\": \"openwrt-%s-%s-%s\",\n", "'$version'", "'$(echo $target | tr / -)'" , profile_id >> "/tmp/target_profiles_'$version'.json"
+                    printf "    \"images\": [],\n" >> "/tmp/target_profiles_'$version'.json"
+                    printf "    \"supported_devices\": [\"%s\"],\n", profile_id >> "/tmp/target_profiles_'$version'.json"
+                    printf "    \"titles\": [\n" >> "/tmp/target_profiles_'$version'.json"
+                    printf "      {\n" >> "/tmp/target_profiles_'$version'.json"
+                    printf "        \"vendor\": \"%s\",\n", vendor >> "/tmp/target_profiles_'$version'.json"
+                    printf "        \"model\": \"%s\"\n", model >> "/tmp/target_profiles_'$version'.json"
+                    printf "      }\n" >> "/tmp/target_profiles_'$version'.json"
+                    printf "    ]\n" >> "/tmp/target_profiles_'$version'.json"
+                    printf "  }" >> "/tmp/target_profiles_'$version'.json"
                 }
-                END { print "" }
-                ' "$targetinfo_file" >> "$temp_profiles"
+                END { 
+                    print "" >> "/tmp/overview_profiles_'$version'.json"
+                    print "" >> "/tmp/target_profiles_'$version'.json"
+                }
+                ' "$targetinfo_file"
                 
-                echo ']' >> "$temp_profiles"
+                echo ']' >> "$temp_overview"
+                echo '}' >> "$temp_profiles"
                 
-                # Создание .overview.json в официальном формате
+                # Создание .overview.json для релиза
                 cat > "$overview_file" << EOF
 {
   "release": "$version",
-  "profiles": $(cat "$temp_profiles")
+  "profiles": $(cat "$temp_overview")
 }
 EOF
                 
@@ -460,8 +506,15 @@ EOF
                 local target_dir="$store_dir/releases/$version/targets/$target"
                 mkdir -p "$target_dir"
                 
-                # Создание profiles.json для target
-                cp "$temp_profiles" "$target_dir/profiles.json"
+                # Создание profiles.json для target в правильном формате объекта
+                cat > "$target_dir/profiles.json" << EOF
+{
+  "arch_packages": "$(echo "$target" | cut -d'/' -f1)",
+  "default_packages": [],
+  "metadata_version": 1,
+  "profiles": $(cat "$temp_profiles")
+}
+EOF
                 
                 # Создание .targetinfo для target
                 cp "$targetinfo_file" "$target_dir/.targetinfo" 2>/dev/null || touch "$target_dir/.targetinfo"
@@ -476,8 +529,8 @@ EOF
                     echo -e "  ${GREEN}✓ routerich_ax3000-v1 найден и добавлен!${NC}"
                 fi
                 
-                # Очистка временного файла
-                rm -f "$temp_profiles"
+                # Очистка временных файлов
+                rm -f "$temp_overview" "$temp_profiles"
             else
                 echo "  Файл .targetinfo не найден, создаем пустую структуру"
                 cat > "$overview_file" << EOF
@@ -491,8 +544,15 @@ EOF
                 local target_dir="$store_dir/releases/$version/targets/$target"
                 mkdir -p "$target_dir"
                 
-                # Создание пустого profiles.json
-                echo '[]' > "$target_dir/profiles.json"
+                # Создание пустого profiles.json в правильном формате
+                cat > "$target_dir/profiles.json" << EOF
+{
+  "arch_packages": "$(echo "$target" | cut -d'/' -f1)",
+  "default_packages": [],
+  "metadata_version": 1,
+  "profiles": {}
+}
+EOF
                 touch "$target_dir/.targetinfo"
                 
                 echo "  Создан: $target_dir/profiles.json (пустой)"
