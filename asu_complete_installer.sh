@@ -842,8 +842,8 @@ create_systemd_service() {
     cat > /etc/systemd/system/asu-server.service << EOF
 [Unit]
 Description=OpenWrt ASU Server
-After=network.target redis.service nginx.service
-Requires=redis.service
+After=network.target nginx.service
+Wants=nginx.service
 
 [Service]
 Type=simple
@@ -851,12 +851,17 @@ User=$user
 Group=$user
 WorkingDirectory=$INSTALL_DIR/asu
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
-ExecStartPre=/bin/bash -c 'systemctl --user start podman.socket || true'
+Environment="XDG_RUNTIME_DIR=/run/user/$(id -u "$user")"
+ExecStartPre=/bin/bash -c 'systemctl stop redis-server 2>/dev/null || systemctl stop redis 2>/dev/null || true'
+ExecStartPre=/bin/bash -c 'pkill -f redis-server 2>/dev/null || true'
+ExecStartPre=/bin/bash -c 'systemctl --user start podman.socket 2>/dev/null || true'
 ExecStart=/usr/bin/podman-compose up
 ExecStop=/usr/bin/podman-compose down
 Restart=on-failure
 RestartSec=15
 TimeoutStartSec=300
+KillMode=mixed
+KillSignal=SIGTERM
 
 [Install]
 WantedBy=multi-user.target
@@ -890,15 +895,33 @@ build_and_start_services() {
     fi
     
     # Проверка, что порт 6379 свободен
-    if lsof -i :6379 >/dev/null 2>&1 || netstat -tuln | grep -q ':6379' 2>/dev/null; then
+    echo "Проверка доступности порта 6379..."
+    if ss -tuln 2>/dev/null | grep -q ':6379' || (command -v lsof >/dev/null && lsof -i :6379 >/dev/null 2>&1); then
         echo -e "${YELLOW}Предупреждение: Порт 6379 занят. Попытка освободить...${NC}"
-        # Попытка убить процесс на порту 6379
-        lsof -ti :6379 | xargs -r kill -9 2>/dev/null || true
-        sleep 2
+        # Убиваем все процессы redis
+        pkill -f redis-server 2>/dev/null || true
+        pkill -f redis 2>/dev/null || true
+        # Ждем освобождения порта
+        for i in {1..10}; do
+            if ! ss -tuln 2>/dev/null | grep -q ':6379'; then
+                echo "Порт 6379 освобожден"
+                break
+            fi
+            echo "Ожидание освобождения порта... ($i/10)"
+            sleep 1
+        done
+    else
+        echo "Порт 6379 свободен"
     fi
     
-    # Сборка контейнеров
+    # Остановка и очистка старых контейнеров
+    echo "Очистка старых контейнеров..."
     cd "$INSTALL_DIR/asu"
+    su - "$user" -c "cd $INSTALL_DIR/asu && podman-compose down --remove-orphans" 2>/dev/null || true
+    su - "$user" -c "podman system prune -f" 2>/dev/null || true
+    
+    # Сборка контейнеров
+    echo "Сборка контейнеров..."
     su - "$user" -c "cd $INSTALL_DIR/asu && podman-compose build"
     
     # Запуск сервисов
@@ -906,6 +929,7 @@ build_and_start_services() {
     
     systemctl daemon-reload
     systemctl enable asu-server
+    echo "Запуск ASU сервера..."
     systemctl start asu-server
 }
 
@@ -1161,6 +1185,8 @@ show_services_menu() {
     echo "4) Запустить сервисы"
     echo "5) Показать логи ASU"
     echo "6) Показать логи Nginx"
+    echo "7) Очистить Redis и перезапустить"
+    echo "8) Полная очистка контейнеров"
     echo "0) Назад"
     echo ""
     echo -n "Выберите действие: "
@@ -1492,6 +1518,27 @@ case "$1" in
                                 ;;
                             5) journalctl -u asu-server -f ;;
                             6) journalctl -u nginx -f ;;
+                            7) 
+                                echo "Очистка Redis и перезапуск..."
+                                systemctl stop asu-server
+                                systemctl stop redis-server 2>/dev/null || systemctl stop redis 2>/dev/null || true
+                                pkill -f redis-server 2>/dev/null || true
+                                pkill -f redis 2>/dev/null || true
+                                sleep 2
+                                systemctl start asu-server
+                                ;;
+                            8)
+                                echo "Полная очистка контейнеров..."
+                                systemctl stop asu-server
+                                local user="${SUDO_USER:-asu}"
+                                cd "$INSTALL_DIR/asu"
+                                su - "$user" -c "cd $INSTALL_DIR/asu && podman-compose down --remove-orphans" 2>/dev/null || true
+                                su - "$user" -c "podman system prune -af" 2>/dev/null || true
+                                systemctl stop redis-server 2>/dev/null || systemctl stop redis 2>/dev/null || true
+                                pkill -f redis 2>/dev/null || true
+                                sleep 2
+                                systemctl start asu-server
+                                ;;
                             0) break ;;
                             *) echo -e "${RED}Неверный выбор${NC}" ;;
                         esac
