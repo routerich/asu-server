@@ -360,7 +360,9 @@ install_dependencies() {
         wget \
         ufw \
         htop \
-        nano
+        nano \
+        lsof \
+        net-tools
 }
 
 setup_podman() {
@@ -544,13 +546,28 @@ build_and_start_services() {
         echo "Systemd недоступен, пропускаем настройку podman socket"
     fi
     
+    # Остановка системного Redis, если он запущен
+    echo "Проверка системного Redis..."
+    if systemctl is-active --quiet redis-server 2>/dev/null || systemctl is-active --quiet redis 2>/dev/null; then
+        echo "Остановка системного Redis для освобождения порта 6379..."
+        systemctl stop redis-server 2>/dev/null || systemctl stop redis 2>/dev/null || true
+        systemctl disable redis-server 2>/dev/null || systemctl disable redis 2>/dev/null || true
+    fi
+    
+    # Проверка, что порт 6379 свободен
+    if lsof -i :6379 >/dev/null 2>&1 || netstat -tuln | grep -q ':6379' 2>/dev/null; then
+        echo -e "${YELLOW}Предупреждение: Порт 6379 занят. Попытка освободить...${NC}"
+        # Попытка убить процесс на порту 6379
+        lsof -ti :6379 | xargs -r kill -9 2>/dev/null || true
+        sleep 2
+    fi
+    
     # Сборка контейнеров
     cd "$INSTALL_DIR/asu"
     su - "$user" -c "cd $INSTALL_DIR/asu && podman-compose build"
     
     # Запуск сервисов
-    systemctl enable redis-server nginx
-    systemctl start redis-server
+    systemctl enable nginx
     
     systemctl daemon-reload
     systemctl enable asu-server
@@ -1102,10 +1119,21 @@ case "$1" in
                         read -r svc_choice
                         
                         case $svc_choice in
-                            1) systemctl restart asu-server ;;
-                            2) systemctl restart asu-server nginx redis ;;
+                            1) 
+                                # Остановка системного Redis перед перезапуском
+                                systemctl stop redis-server 2>/dev/null || systemctl stop redis 2>/dev/null || true
+                                systemctl restart asu-server 
+                                ;;
+                            2) 
+                                systemctl stop redis-server 2>/dev/null || systemctl stop redis 2>/dev/null || true
+                                systemctl restart asu-server nginx
+                                ;;
                             3) systemctl stop asu-server ;;
-                            4) systemctl start asu-server ;;
+                            4) 
+                                # Остановка системного Redis перед запуском
+                                systemctl stop redis-server 2>/dev/null || systemctl stop redis 2>/dev/null || true
+                                systemctl start asu-server 
+                                ;;
                             5) journalctl -u asu-server -f ;;
                             6) journalctl -u nginx -f ;;
                             0) break ;;
