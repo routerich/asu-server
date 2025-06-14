@@ -395,50 +395,83 @@ populate_overview_files() {
             local targetinfo_file="$path/.targetinfo"
             
             if [ -f "$targetinfo_file" ]; then
-                # Извлечение профилей из .targetinfo
-                local profiles_json=$(awk '/^Target-Profile:/ {print "\"" $2 "\""}' "$targetinfo_file" | paste -sd, -)
+                # Извлечение профилей из .targetinfo в правильном формате
+                echo "  Создание .overview.json в формате OpenWrt..."
                 
-                # Проверка, что profiles_json не пустой
-                if [ -z "$profiles_json" ]; then
-                    profiles_json='""'
-                fi
+                # Создание временного файла для профилей
+                local temp_profiles="/tmp/profiles_$version.json"
+                echo '[' > "$temp_profiles"
                 
-                # Создание обновленного .overview.json с правильной структурой
+                # Парсинг .targetinfo для создания профилей
+                awk '
+                BEGIN { RS=""; FS="\n"; first=1 }
+                /^Target-Profile:/ {
+                    if (!first) print ","
+                    first=0
+                    
+                    profile_id = ""
+                    model = ""
+                    vendor = ""
+                    
+                    for (i=1; i<=NF; i++) {
+                        if ($i ~ /^Target-Profile:/) {
+                            gsub(/^Target-Profile: /, "", $i)
+                            profile_id = $i
+                        }
+                        if ($i ~ /^Target-Profile-Name:/) {
+                            gsub(/^Target-Profile-Name: /, "", $i)
+                            name = $i
+                            # Попытка разделить на vendor и model
+                            if (match(name, /^([^[:space:]]+)[[:space:]]+(.+)/, arr)) {
+                                vendor = arr[1]
+                                model = arr[2]
+                            } else {
+                                vendor = "Generic"
+                                model = name
+                            }
+                        }
+                    }
+                    
+                    printf "    {\n"
+                    printf "      \"id\": \"%s\",\n", profile_id
+                    printf "      \"target\": \"%s\",\n", "'$target'"
+                    printf "      \"titles\": [\n"
+                    printf "        {\n"
+                    printf "          \"vendor\": \"%s\",\n", vendor
+                    printf "          \"model\": \"%s\"\n", model
+                    printf "        }\n"
+                    printf "      ]\n"
+                    printf "    }"
+                }
+                END { print "" }
+                ' "$targetinfo_file" >> "$temp_profiles"
+                
+                echo ']' >> "$temp_profiles"
+                
+                # Создание .overview.json в официальном формате
                 cat > "$overview_file" << EOF
 {
-  "version": "$version",
-  "branch": "${version%.*}",
-  "release_date": "$(date -u +%Y-%m-%d)",
-  "targets": {
-    "$target": {
-      "enabled": true,
-      "profiles": [$profiles_json]
-    }
-  },
-  "profiles": [$profiles_json]
+  "release": "$version",
+  "profiles": $(cat "$temp_profiles")
 }
 EOF
                 
-                local profile_count=$(echo "$profiles_json" | tr ',' '\n' | wc -l)
+                # Подсчет и проверка профилей
+                local profile_count=$(grep -c '"id":' "$overview_file" 2>/dev/null || echo "0")
                 echo "  Добавлено профилей: $profile_count"
                 
                 # Проверка наличия routerich_ax3000-v1
-                if echo "$profiles_json" | grep -q "routerich_ax3000-v1"; then
+                if grep -q "routerich_ax3000-v1" "$overview_file"; then
                     echo -e "  ${GREEN}✓ routerich_ax3000-v1 найден и добавлен!${NC}"
                 fi
+                
+                # Очистка временного файла
+                rm -f "$temp_profiles"
             else
                 echo "  Файл .targetinfo не найден, создаем пустую структуру"
                 cat > "$overview_file" << EOF
 {
-  "version": "$version",
-  "branch": "${version%.*}",
-  "release_date": "$(date -u +%Y-%m-%d)",
-  "targets": {
-    "$target": {
-      "enabled": true,
-      "profiles": []
-    }
-  },
+  "release": "$version",
   "profiles": []
 }
 EOF
@@ -754,50 +787,35 @@ create_store_structure() {
     # Создание .overview.json файлов
     cat > "$store_dir/releases/24.10.1/.overview.json" << 'EOF'
 {
-  "version": "24.10.1",
-  "branch": "24.10",
-  "release_date": "2024-10-01",
-  "targets": {},
+  "release": "24.10.1",
   "profiles": []
 }
 EOF
 
     cat > "$store_dir/releases/24.10/.overview.json" << 'EOF'
 {
-  "version": "24.10",
-  "branch": "24.10",
-  "release_date": "2024-10-01",
-  "targets": {},
+  "release": "24.10",
   "profiles": []
 }
 EOF
 
     cat > "$store_dir/releases/23.05/.overview.json" << 'EOF'
 {
-  "version": "23.05",
-  "branch": "23.05",
-  "release_date": "2023-05-01",
-  "targets": {},
+  "release": "23.05",
   "profiles": []
 }
 EOF
 
     cat > "$store_dir/releases/22.03/.overview.json" << 'EOF'
 {
-  "version": "22.03",
-  "branch": "22.03",
-  "release_date": "2022-03-01",
-  "targets": {},
+  "release": "22.03",
   "profiles": []
 }
 EOF
 
     cat > "$store_dir/releases/SNAPSHOT/.overview.json" << 'EOF'
 {
-  "version": "SNAPSHOT",
-  "branch": "master",
-  "release_date": "ongoing",
-  "targets": {},
+  "release": "SNAPSHOT",
   "profiles": []
 }
 EOF
