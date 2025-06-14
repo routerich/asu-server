@@ -456,9 +456,20 @@ populate_overview_files() {
 }
 EOF
                 
+                # Создание структуры для target
+                local target_dir="$store_dir/releases/$version/targets/$target"
+                mkdir -p "$target_dir"
+                
+                # Создание profiles.json для target
+                cp "$temp_profiles" "$target_dir/profiles.json"
+                
+                # Создание .targetinfo для target
+                cp "$targetinfo_file" "$target_dir/.targetinfo" 2>/dev/null || touch "$target_dir/.targetinfo"
+                
                 # Подсчет и проверка профилей
                 local profile_count=$(grep -c '"id":' "$overview_file" 2>/dev/null || echo "0")
                 echo "  Добавлено профилей: $profile_count"
+                echo "  Создан: $target_dir/profiles.json"
                 
                 # Проверка наличия routerich_ax3000-v1
                 if grep -q "routerich_ax3000-v1" "$overview_file"; then
@@ -475,6 +486,16 @@ EOF
   "profiles": []
 }
 EOF
+                
+                # Создание пустой структуры для target
+                local target_dir="$store_dir/releases/$version/targets/$target"
+                mkdir -p "$target_dir"
+                
+                # Создание пустого profiles.json
+                echo '[]' > "$target_dir/profiles.json"
+                touch "$target_dir/.targetinfo"
+                
+                echo "  Создан: $target_dir/profiles.json (пустой)"
             fi
         fi
     done
@@ -484,6 +505,55 @@ EOF
     chown -R www-data:www-data "$store_dir" 2>/dev/null || true
     
     echo "Заполнение .overview.json завершено"
+    
+    # Создание дополнительных файлов для совместимости
+    create_additional_store_files "$store_dir"
+}
+
+create_additional_store_files() {
+    local store_dir="$1"
+    echo "Создание дополнительных файлов для store..."
+    
+    # Создание index.json для корня store
+    cat > "$store_dir/index.json" << 'EOF'
+{
+  "versions": ["SNAPSHOT", "24.10.1", "24.10", "23.05", "22.03"],
+  "default_version": "24.10.1"
+}
+EOF
+
+    # Создание versions.json
+    cat > "$store_dir/versions.json" << 'EOF'
+[
+  {
+    "name": "SNAPSHOT",
+    "enabled": true,
+    "snapshot": true
+  },
+  {
+    "name": "24.10.1",
+    "enabled": true,
+    "snapshot": false
+  },
+  {
+    "name": "24.10",
+    "enabled": true,
+    "snapshot": false
+  },
+  {
+    "name": "23.05",
+    "enabled": true,
+    "snapshot": false
+  },
+  {
+    "name": "22.03",
+    "enabled": true,
+    "snapshot": false
+  }
+]
+EOF
+
+    echo "Дополнительные файлы созданы"
 }
 
 show_device_profiles() {
@@ -685,7 +755,13 @@ server {
         autoindex_exact_size off;
         autoindex_localtime on;
         
-        # Разрешить доступ к скрытым файлам (.overview.json)
+        # Правильные MIME типы для JSON
+        location ~* \.json$ {
+            add_header Content-Type application/json;
+            add_header Cache-Control "no-cache, no-store, must-revalidate";
+        }
+        
+        # Разрешить доступ к скрытым файлам (.overview.json, .targetinfo)
         location ~ /\. {
             allow all;
         }
