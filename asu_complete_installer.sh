@@ -330,11 +330,95 @@ class LocalSettings(BaseSettings):
 settings = LocalSettings()
 EOF
 
+    # Обновление профилей устройств
+    echo "Обновление профилей устройств..."
+    update_device_profiles
+
     # Перезапуск ASU если запущен
     if systemctl is-active --quiet asu-server 2>/dev/null; then
         echo "Перезапуск ASU сервера..."
         systemctl restart asu-server
     fi
+}
+
+update_device_profiles() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        return
+    fi
+    
+    jq -r '.imagebuilders[] | select(.enabled == true) | "\(.version) \(.target) \(.path)"' "$CONFIG_FILE" | \
+    while read -r version target path; do
+        if [ -d "$path" ]; then
+            echo "Сканирование профилей для $version/$target..."
+            
+            # Поиск файла .targetinfo
+            targetinfo_file="$path/.targetinfo"
+            if [ -f "$targetinfo_file" ]; then
+                # Извлечение профилей из .targetinfo
+                profiles=$(awk '/^Target-Profile:/ {print $2}' "$targetinfo_file" | sort -u)
+                echo "Найдено профилей: $(echo "$profiles" | wc -l)"
+            else
+                echo "Файл .targetinfo не найден в $path"
+            fi
+            
+            # Поиск в build_dir/target-*
+            build_dir=$(find "$path" -name "build_dir" -type d | head -1)
+            if [ -n "$build_dir" ]; then
+                target_dir=$(find "$build_dir" -name "target-*" -type d | head -1)
+                if [ -n "$target_dir" ]; then
+                    linux_dir=$(find "$target_dir" -name "linux-*" -type d | head -1)
+                    if [ -n "$linux_dir" ]; then
+                        echo "Найдена директория сборки: $linux_dir"
+                    fi
+                fi
+            fi
+        fi
+    done
+}
+
+show_device_profiles() {
+    echo -e "${BLUE}=== Профили устройств ===${NC}"
+    echo ""
+    
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "Нет настроенных Image Builder"
+        return
+    fi
+    
+    jq -r '.imagebuilders[] | select(.enabled == true) | "\(.version) \(.target) \(.path)"' "$CONFIG_FILE" | \
+    while read -r version target path; do
+        echo -e "${YELLOW}=== $version/$target ===${NC}"
+        
+        if [ -d "$path" ]; then
+            # Поиск файла .targetinfo
+            targetinfo_file="$path/.targetinfo"
+            if [ -f "$targetinfo_file" ]; then
+                echo "Доступные профили устройств:"
+                awk '/^Target-Profile:/ {print "  - " $2}' "$targetinfo_file" | head -20
+                
+                total_profiles=$(awk '/^Target-Profile:/ {print $2}' "$targetinfo_file" | wc -l)
+                echo "  Всего профилей: $total_profiles"
+                
+                # Поиск конкретного профиля routerich_ax3000-v1
+                if grep -q "routerich_ax3000-v1" "$targetinfo_file"; then
+                    echo -e "  ${GREEN}✓ routerich_ax3000-v1 найден!${NC}"
+                else
+                    echo -e "  ${RED}✗ routerich_ax3000-v1 не найден${NC}"
+                fi
+            else
+                echo "  Файл .targetinfo не найден"
+                
+                # Попытка найти профили в других местах
+                if [ -f "$path/tmp/.targetinfo" ]; then
+                    echo "  Найден tmp/.targetinfo, проверяем..."
+                    awk '/^Target-Profile:/ {print "  - " $2}' "$path/tmp/.targetinfo" | head -10
+                fi
+            fi
+        else
+            echo "  Директория не найдена: $path"
+        fi
+        echo ""
+    done
 }
 
 # ===============================================================================
@@ -830,6 +914,7 @@ show_imagebuilder_menu() {
     echo "5) Выключить Image Builder"
     echo "6) Импорт официальных релизов"
     echo "7) Обновить конфигурацию ASU"
+    echo "8) Показать профили устройств"
     echo "0) Назад"
     echo ""
     echo -n "Выберите действие: "
@@ -1091,6 +1176,10 @@ case "$1" in
                                 ;;
                             7) 
                                 update_asu_config
+                                ;;
+                            8)
+                                clear
+                                show_device_profiles
                                 ;;
                             0) 
                                 break
