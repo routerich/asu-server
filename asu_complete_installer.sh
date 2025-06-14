@@ -366,7 +366,15 @@ setup_podman() {
             echo "Создан пользователь: $user" >&2
         fi
     fi
-    loginctl enable-linger "$user" >&2 || true
+    
+    # Попытка включить linger для пользователя
+    if command -v loginctl >/dev/null 2>&1; then
+        loginctl enable-linger "$user" 2>/dev/null || {
+            echo "Предупреждение: не удалось включить linger для $user" >&2
+            echo "Это нормально в контейнерной среде" >&2
+        }
+    fi
+    
     echo "$user"
 }
 
@@ -515,9 +523,19 @@ build_and_start_services() {
     echo -e "${YELLOW}Сборка и запуск сервисов...${NC}"
     local user="$1"
     
-    # Запуск Podman socket
-    su - "$user" -c "systemctl --user enable podman.socket"
-    su - "$user" -c "systemctl --user start podman.socket"
+    # Настройка среды для пользователя
+    export XDG_RUNTIME_DIR="/run/user/$(id -u "$user")"
+    mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null || true
+    chown "$user:$user" "$XDG_RUNTIME_DIR" 2>/dev/null || true
+    chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+    
+    # Запуск Podman socket (с проверкой доступности)
+    if command -v systemctl >/dev/null 2>&1; then
+        su - "$user" -c "export XDG_RUNTIME_DIR='$XDG_RUNTIME_DIR'; systemctl --user enable podman.socket 2>/dev/null || echo 'Предупреждение: не удалось включить podman.socket'"
+        su - "$user" -c "export XDG_RUNTIME_DIR='$XDG_RUNTIME_DIR'; systemctl --user start podman.socket 2>/dev/null || echo 'Предупреждение: не удалось запустить podman.socket'"
+    else
+        echo "Systemd недоступен, пропускаем настройку podman socket"
+    fi
     
     # Сборка контейнеров
     cd "$INSTALL_DIR/asu"
